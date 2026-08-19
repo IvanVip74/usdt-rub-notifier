@@ -1,37 +1,48 @@
 name: USDT/RUB notifier
-
+ 
 on:
   schedule:
+    # GitHub гарантирует минимум ~5 минут между запусками расписания;
+    # в моменты высокой нагрузки на GitHub Actions запуск может слегка
+    # задержаться — для курсового монитора это не критично.
     - cron: "*/5 * * * *"
   workflow_dispatch: {}
-
+ 
 permissions:
   contents: write
-
+ 
 concurrency:
   group: usdt-rub-notifier
   cancel-in-progress: false
-
+ 
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
+ 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
+ 
       - name: Проверить курс и отправить уведомление при необходимости
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python fetch_and_notify.py
-
+ 
       - name: Сохранить обновлённое состояние в репозиторий
         run: |
           git config user.name "usdt-rub-bot"
           git config user.email "actions@users.noreply.github.com"
           git add state.json history.log
-          git diff --cached --quiet || git commit -m "update rate state"
+          if git diff --cached --quiet; then
+            echo "Нет изменений для коммита."
+            exit 0
+          fi
+          git commit -m "update rate state"
+          # Подтягиваем свежие изменения (например, если файлы правили
+          # вручную на GitHub) перед отправкой, чтобы push не отклонялся.
+          git pull --rebase origin main
           git push
+ 
